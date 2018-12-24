@@ -1,5 +1,9 @@
 # rpi-laser-cat-teaser
 
+[![Build Status](https://travis-ci.org/antonfisher/rpi-laser-cat-teaser.svg?branch=master)](https://travis-ci.org/antonfisher/rpi-laser-cat-teaser)
+[![Go Report Card](https://goreportcard.com/badge/github.com/antonfisher/rpi-laser-cat-teaser)](https://goreportcard.com/report/github.com/antonfisher/rpi-laser-cat-teaser)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+
 ## Plan
 
 - [x] assemble servo controller
