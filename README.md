@@ -2,10 +2,10 @@
 
 ## Plan
 
-- [x] ~assemble servo controller~
+- [x] assemble servo controller
 - [ ] order potentiometer
 - [ ] control servo software
-    - [x] ~move with servo controller~
+    - [x] move with servo controller
     - [x] move with RPi PWM (?)
     - [ ] calibrate servos
 - [ ] laser
