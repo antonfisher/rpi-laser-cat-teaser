@@ -1,4 +1,4 @@
-package camera
+package raspivid
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 var id = 0
@@ -18,8 +17,14 @@ var (
 	defaultFPS    = 15
 )
 
-// RaspividImageStream runs `rapsivid` program and returns a stream of pictures
-type RaspividImageStream struct {
+// Image represents single JPEG file
+type Image struct {
+	Data []byte
+	ID   int
+}
+
+// ImageStream runs `rapsivid` program and returns a stream of pictures
+type ImageStream struct {
 	Width          int
 	Height         int
 	FPS            int
@@ -29,7 +34,7 @@ type RaspividImageStream struct {
 	Options        []string // any additional options to pass to `rapsivid`
 }
 
-func (s *RaspividImageStream) makeOptions() []string {
+func (s *ImageStream) makeOptions() []string {
 	if s.FPS == 0 {
 		s.FPS = defaultFPS
 	}
@@ -67,11 +72,7 @@ func (s *RaspividImageStream) makeOptions() []string {
 	return options
 }
 
-func logImageProcessingTime(id int, startTime time.Time) {
-	go fmt.Printf("image %v took:\t%s\n", id, time.Since(startTime))
-}
-
-func (s *RaspividImageStream) parseRaspividOutput(output io.ReadCloser, ch chan Image) {
+func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan Image) {
 	// JPEG SOI marker-|----------|
 	var marker = []byte{0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x84, 0x00}
 	var markerLength = len(marker)
@@ -82,7 +83,7 @@ func (s *RaspividImageStream) parseRaspividOutput(output io.ReadCloser, ch chan 
 		var readBuffer = make([]byte, 4096) //TODO try other values
 		n, err := output.Read(readBuffer)
 		if err != nil {
-			fmt.Printf("[Stream] read output error: %s\n", err)
+			fmt.Printf("[raspivid ImageStream] read output error: %s\n", err)
 			close(ch)
 			break
 		}
@@ -111,14 +112,14 @@ func (s *RaspividImageStream) parseRaspividOutput(output io.ReadCloser, ch chan 
 	}
 }
 
-// Start return a channel of images
-func (s *RaspividImageStream) Start() (chan Image, error) {
-	fmt.Printf("[Stream] start...\n")
+// Start returns a channel of images
+func (s *ImageStream) Start() (chan Image, error) {
+	fmt.Printf("[raspivid ImageStream] start...\n")
 
 	options := s.makeOptions() //TODO validate options
 
 	cmd := exec.Command("raspivid", options...) //TODO use context to cancel command
-	fmt.Printf("[Stream] command to run: raspivid %s\n", strings.Join(options, " "))
+	fmt.Printf("[raspivid ImageStream] command to run: raspivid %s\n", strings.Join(options, " "))
 
 	// log errors to stdout
 	cmd.Stderr = os.Stdout
@@ -126,13 +127,13 @@ func (s *RaspividImageStream) Start() (chan Image, error) {
 	// pipe raspivid output to parser
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Printf("[Stream] piping error: %s\n", err)
+		fmt.Printf("[raspivid ImageStream] piping error: %s\n", err)
 		return nil, err
 	}
 
 	err = cmd.Start()
 	if err != nil {
-		fmt.Printf("[Stream] command starting error: %s\n", err)
+		fmt.Printf("[raspivid ImageStream] command starting error: %s\n", err)
 		return nil, err
 	}
 
