@@ -15,8 +15,8 @@
 - [ ] laser
     - [ ] movement mechanics
 - [ ] camera software
-    - [ ] connect camera to RPi
-    - [ ] read image
+    - [x] connect camera to RPi
+    - [x] read image
     - [ ] movement detection
     - [x] run away algorithm
 - [ ] pair servo and camera software
