@@ -9,29 +9,18 @@ import (
 	"strings"
 )
 
-var id = 0
-
 var (
 	defaultWidth  = 3 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
 	defaultHeight = 3 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
 	defaultFPS    = 15
 )
 
-// Image represents single JPEG file
-type Image struct {
-	Data []byte
-	ID   int
-}
-
-// ImageStream runs `rapsivid` program and returns a stream of pictures
+// ImageStream runs `rapsivid` program and returns a stream of pictures (as []byte)
 type ImageStream struct {
-	Width          int
-	Height         int
-	FPS            int
-	FlipVertical   bool
-	FlipHorizontal bool
-	AddTimestamp   bool
-	Options        []string // any additional options to pass to `rapsivid`
+	Width   int
+	Height  int
+	FPS     int
+	Options []string // any additional options to pass to `rapsivid`
 }
 
 func (s *ImageStream) makeOptions() []string {
@@ -56,15 +45,6 @@ func (s *ImageStream) makeOptions() []string {
 		"--flush", // flush buffers in order to decrease latency
 	}
 
-	if s.FlipVertical {
-		options = append(options, "--vflip") // set vertical flip
-	}
-	if s.FlipHorizontal {
-		options = append(options, "--hflip") // set horizontal flip
-	}
-	if s.AddTimestamp {
-		options = append(options, []string{"--annotate", "12"}...) // enable/set annotate flags or text
-	}
 	if len(s.Options) > 0 {
 		options = append(options, s.Options...)
 	}
@@ -72,11 +52,11 @@ func (s *ImageStream) makeOptions() []string {
 	return options
 }
 
-func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan Image) {
+func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan []byte) {
 	// JPEG SOI marker-|----------|
 	var marker = []byte{0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x84, 0x00}
 	var markerLength = len(marker)
-	var imageBuffer = new(bytes.Buffer)
+	var imagesBuffer = new(bytes.Buffer)
 
 	for {
 		// read raspivid output by chunks
@@ -89,31 +69,30 @@ func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan Image) {
 		}
 
 		for i := 0; i < n; i++ {
-			imageBuffer.WriteByte(readBuffer[i])
+			imagesBuffer.WriteByte(readBuffer[i])
 			// look for the marker at the end of buffer (ignore the first found marker)
-			if bytes.HasSuffix(imageBuffer.Bytes(), marker) && imageBuffer.Len() > markerLength {
+			if bytes.HasSuffix(imagesBuffer.Bytes(), marker) && imagesBuffer.Len() > markerLength {
 				// cut off the marker from the end
-				imageLength := imageBuffer.Len() - markerLength - 1
-				imageData := make([]byte, imageLength)
-				copy(imageData, imageBuffer.Bytes()[:imageLength])
+				imageLength := imagesBuffer.Len() - markerLength - 1
+				imageBytes := make([]byte, imageLength)
+				copy(imageBytes, imagesBuffer.Bytes()[:imageLength])
 
 				// try to send new found image to the channel
-				id++
 				select {
-				case ch <- Image{Data: imageData, ID: id}:
+				case ch <- imageBytes:
 				default:
 				}
 
 				// reset image buffer and add marker to the beginning (that was cut above)
-				imageBuffer.Reset()
-				imageBuffer.Write(marker)
+				imagesBuffer.Reset()
+				imagesBuffer.Write(marker)
 			}
 		}
 	}
 }
 
 // Start returns a channel of images
-func (s *ImageStream) Start() (chan Image, error) {
+func (s *ImageStream) Start() (chan []byte, error) {
 	fmt.Printf("[raspivid ImageStream] start...\n")
 
 	options := s.makeOptions() //TODO validate options
@@ -138,7 +117,7 @@ func (s *ImageStream) Start() (chan Image, error) {
 	}
 
 	// channel for images
-	ch := make(chan Image)
+	ch := make(chan []byte)
 
 	// loop packs images from raspivid stdout and sends them to the channel
 	go s.parseRaspividOutput(stdout, ch)
