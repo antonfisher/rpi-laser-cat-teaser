@@ -73,7 +73,7 @@ func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan []byte) 
 			// look for the marker at the end of buffer (ignore the first found marker)
 			if bytes.HasSuffix(imagesBuffer.Bytes(), marker) && imagesBuffer.Len() > markerLength {
 				// cut off the marker from the end
-				imageLength := imagesBuffer.Len() - markerLength - 1
+				imageLength := imagesBuffer.Len() - markerLength
 				imageBytes := make([]byte, imageLength)
 				copy(imageBytes, imagesBuffer.Bytes()[:imageLength])
 
