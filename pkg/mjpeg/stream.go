@@ -64,7 +64,7 @@ func (s *Stream) Broadcast() {
 func (s *Stream) HTTPHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Add("Content-Type", fmt.Sprintf("multipart/x-mixed-replace; boundary=%s", mjpegBoundary))
 	res.Header().Set("Cache-Control", "no-cache")
-	res.Header().Set("Connection", "keep-alive")
+	res.Header().Set("Connection", "close") //TODO or "keep-alive"?
 
 	updateClientCh := make(chan []byte)
 
@@ -74,25 +74,35 @@ func (s *Stream) HTTPHandler(res http.ResponseWriter, req *http.Request) {
 	defer s.logClients()
 	defer s.removeClient(updateClientCh)
 
+	// if client closed the connection
+	var clientClosed <-chan bool
+	if i, ok := res.(http.CloseNotifier); ok {
+		clientClosed = i.CloseNotify()
+	}
+
 	resBuffer := new(bytes.Buffer)
 	for {
-		image := <-updateClientCh
+		select {
+		case <-clientClosed:
+			return
+		case image := <-updateClientCh:
+			// JPEG headers
+			fmt.Fprintf(resBuffer, "%s\r\n", mjpegBoundary)
+			fmt.Fprint(resBuffer, "Content-Type: image/jpeg\r\n")
+			fmt.Fprintf(resBuffer, "Content-Length: %d\r\n", len(image))
+			fmt.Fprint(resBuffer, "\r\n")
 
-		resBuffer.Reset()
+			// add image
+			resBuffer.Write(image)
 
-		// JPEG headers
-		fmt.Fprintf(resBuffer, "%s\r\n", mjpegBoundary)
-		fmt.Fprint(resBuffer, "Content-Type: image/jpeg\r\n")
-		fmt.Fprintf(resBuffer, "Content-Length: %d\r\n", len(image))
-		fmt.Fprint(resBuffer, "\r\n")
+			// send image with headers
+			_, err := resBuffer.WriteTo(res)
 
-		// add image
-		resBuffer.Write(image)
+			resBuffer.Reset()
 
-		// send image with headers
-		_, err := res.Write(resBuffer.Bytes())
-		if err != nil { // likely connection is close by client
-			break
+			if err != nil { // likely connection is close by client
+				return
+			}
 		}
 	}
 }
