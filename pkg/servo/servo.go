@@ -56,9 +56,6 @@ func (s *Servo) SetPercent(val float64) {
 
 	duty := rangeFrom + ((rangeTo-rangeFrom)*uint32(val*10000))/10000
 	s.rpioPin.DutyCycle(duty, s.pwmCycle)
-	go func() {
-		fmt.Printf("SetPercent: %v\t%v\n", val, duty)
-	}()
 }
 
 // NewServo - create new servo controller
