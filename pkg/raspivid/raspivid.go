@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	defaultWidth  = 3 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
-	defaultHeight = 3 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
+	// keep 4 x 3 dimension, otherwise raspivid will crop the image
+	defaultWidth  = 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
+	defaultHeight = 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
 	defaultFPS    = 15
 )
 
