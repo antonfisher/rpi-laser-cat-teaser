@@ -42,7 +42,7 @@ func (s *Server) indexHandler(res http.ResponseWriter, req *http.Request) {
 				document.getElementById('box').appendChild(el);
 			">+</button><br>
 			<div id="box">
-				<img onclick="this.remove()" src="%s">
+				<img onclick="this.remove()" src="%s" style="height:70vh">
 			</div>
 		</center>`,
 		s.FullStreamURL(),

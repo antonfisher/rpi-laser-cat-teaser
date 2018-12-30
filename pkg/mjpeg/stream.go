@@ -43,7 +43,7 @@ func (s *Stream) logClients() {
 	fmt.Printf("[MJPEG Stream] client count: %d\n", len(s.clients))
 }
 
-// Broadcast starts broadcasting the stream to clients
+// Broadcast - broadcasts the stream to clients
 func (s *Stream) Broadcast() {
 	go func() {
 		for {
@@ -60,7 +60,7 @@ func (s *Stream) Broadcast() {
 	}()
 }
 
-// HTTPHandler handle HTTP request
+// HTTPHandler is a handler for HTTP server
 func (s *Stream) HTTPHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Add("Content-Type", fmt.Sprintf("multipart/x-mixed-replace; boundary=%s", mjpegBoundary))
 	res.Header().Set("Cache-Control", "no-cache")
