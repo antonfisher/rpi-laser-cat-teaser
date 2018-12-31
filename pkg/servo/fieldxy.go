@@ -45,31 +45,3 @@ func (f *FieldXY) Rect(x0, y0, x1, y1 float64) {
 	f.Line(x1, y1, x1, y0)
 	f.Line(x1, y0, x0, y0)
 }
-
-// NewFieldXYArgs arguments to create a new servo FieldXY
-type NewFieldXYArgs struct {
-	ServoPinX      RpiPwmPin
-	ServoPinY      RpiPwmPin
-	FlipHorizontal bool
-	FlipVertical   bool
-}
-
-// NewFieldXY create new FieldXY
-func NewFieldXY(args NewFieldXYArgs) (*FieldXY, error) {
-	servoX, err := NewServo(args.ServoPinX)
-	if err != nil {
-		return nil, err
-	}
-
-	servoY, err := NewServo(args.ServoPinY)
-	if err != nil {
-		return nil, err
-	}
-
-	return &FieldXY{
-		ServoX:         servoX,
-		ServoY:         servoY,
-		FlipHorizontal: args.FlipHorizontal,
-		FlipVertical:   args.FlipVertical,
-	}, nil
-}
