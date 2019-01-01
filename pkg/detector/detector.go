@@ -2,10 +2,64 @@ package detector
 
 import (
 	"fmt"
+	"image"
+	"time"
+
+	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/debug"
+	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/editor"
 )
 
-//FindCenter of binary presented shape
-func FindCenter(a [][]int) (int, int) {
+// Point is a point on XY field
+type Point struct {
+	X int
+	Y int
+}
+
+// DetectMotion - takes a channel with images stream and returns:
+// - a channel of images with motion indication
+// - a channel of XY Points of detected motion
+func DetectMotion(inputStreamCh chan []byte, cancelCh chan bool) (chan []byte, chan Point) {
+	outputStreamCh := make(chan []byte)
+	motionPointsCh := make(chan Point)
+
+	go func() {
+		var prevImage image.Image
+		var diffArray [][]int
+		var x, y int
+		for {
+			select {
+			case <-cancelCh:
+				break
+			case img := <-inputStreamCh:
+				startTime := time.Now()
+				imageEditor, err := editor.NewEditorFromJpegBytes(img)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				imageBeforeEdit := imageEditor.Clone()
+				if prevImage != nil {
+					diffArray = imageEditor.DiffGreen(prevImage, uint32(7500))
+					xDetected, yDetected := findCenter(diffArray)
+					if xDetected > 0 || yDetected > 0 {
+						x = xDetected
+						y = yDetected
+					}
+					imageEditor.DrawCrosshead(x, y, 20, 2)
+					motionPointsCh <- Point{X: x, Y: y}
+				}
+				outputStreamCh <- imageEditor.JpegBytes(90)
+				prevImage = imageBeforeEdit
+				debug.LogExecutionTime("motion detection", startTime)
+			}
+		}
+	}()
+
+	return outputStreamCh, motionPointsCh
+}
+
+//findCenter of binary presented shape
+func findCenter(a [][]int) (int, int) {
 	var cx, cy, stepsPerformed int
 	var w = len(a)
 	var h = len(a[0])
