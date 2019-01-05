@@ -9,10 +9,21 @@ import (
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/editor"
 )
 
+// Rect is a rectangle represented by two points
+type Rect struct {
+	X0 int
+	Y0 int
+	X1 int
+	Y1 int
+}
+
 // Point is a point on XY field
 type Point struct {
 	X int
 	Y int
+
+	// indicates base rectangle for found motion point
+	Rect Rect
 }
 
 // DetectMotion - takes a channel with images stream and returns:
@@ -25,11 +36,12 @@ func DetectMotion(inputStreamCh chan []byte, cancelCh chan bool) (chan []byte, c
 	go func() {
 		var prevImage image.Image
 		var diffArray [][]int
-		var x, y int
+		var lastDetectedPoint Point
+	Loop:
 		for {
 			select {
 			case <-cancelCh:
-				break
+				break Loop
 			case img := <-inputStreamCh:
 				startTime := time.Now()
 				imageEditor, err := editor.NewEditorFromJpegBytes(img)
@@ -40,13 +52,19 @@ func DetectMotion(inputStreamCh chan []byte, cancelCh chan bool) (chan []byte, c
 				imageBeforeEdit := imageEditor.Clone()
 				if prevImage != nil {
 					diffArray = imageEditor.DiffGreen(prevImage, uint32(7500))
-					xDetected, yDetected := findCenter(diffArray)
-					if xDetected > 0 || yDetected > 0 {
-						x = xDetected
-						y = yDetected
+					detectedPoint := findCenter(diffArray)
+					if detectedPoint.X > 0 || detectedPoint.Y > 0 {
+						lastDetectedPoint = detectedPoint
+						//fmt.Printf("detected point: %+v\n", detectedPoint)
+						motionPointsCh <- detectedPoint
 					}
-					imageEditor.DrawCrosshead(x, y, 20, 2)
-					motionPointsCh <- Point{X: x, Y: y}
+					imageEditor.DrawCrosshead(lastDetectedPoint.X, lastDetectedPoint.Y, 20, 2)
+					imageEditor.DrawRect(
+						lastDetectedPoint.Rect.X0,
+						lastDetectedPoint.Rect.Y0,
+						lastDetectedPoint.Rect.X1,
+						lastDetectedPoint.Rect.Y1,
+					)
 				}
 				outputStreamCh <- imageEditor.JpegBytes(90)
 				prevImage = imageBeforeEdit
@@ -59,62 +77,36 @@ func DetectMotion(inputStreamCh chan []byte, cancelCh chan bool) (chan []byte, c
 }
 
 //findCenter of binary presented shape
-func findCenter(a [][]int) (int, int) {
-	var cx, cy, stepsPerformed int
-	var w = len(a)
-	var h = len(a[0])
+func findCenter(a [][]int) Point {
+	var x0, y0, x1, y1 int
 
-	aCopy := make([][]int, w)
-	for i := range aCopy {
-		aCopy[i] = make([]int, h)
-	}
-
-	for {
-		stepsPerformed++
-
-		for x, row := range a {
-			for y, v := range row {
-				aCopy[x][y] = v
-			}
-		}
-
-		var stepMax int
-		for x, row := range a {
-			for y := range row {
-				neighbours := [][]int{
-					[]int{x - 1, y - 1},
-					[]int{x - 1, y},
-					[]int{x - 1, y + 1},
-					[]int{x, y + 1},
-					[]int{x, y - 1},
-					[]int{x + 1, y - 1},
-					[]int{x + 1, y},
-					[]int{x + 1, y + 1},
+	for x, row := range a {
+		for y := range row {
+			if a[x][y] == 1 {
+				if x0 == 0 {
+					x0 = x
 				}
-				var sum int
-				for _, n := range neighbours {
-					xn := n[0]
-					yn := n[1]
-					if xn > 0 && yn > 0 && xn < w && yn < h {
-						sum += aCopy[xn][yn]
-					}
+				if y0 == 0 {
+					y0 = y
 				}
-				if sum < 8 {
-					a[x][y] = 0
+				if x1 == 0 || x > x1 {
+					x1 = x
 				}
-				if sum > stepMax {
-					stepMax = sum
-					cx = x
-					cy = y
+				if y1 == 0 || y > y1 {
+					y1 = y
 				}
 			}
 		}
-		if stepMax < 8 {
-			break
-		}
 	}
 
-	fmt.Printf("steps performed: %v\t", stepsPerformed)
-
-	return cx, cy
+	return Point{
+		X: x0 + (x1-x0)/2,
+		Y: y0 + (y1-y0)/2,
+		Rect: Rect{
+			X0: x0,
+			Y0: y0,
+			X1: x1,
+			Y1: y1,
+		},
+	}
 }

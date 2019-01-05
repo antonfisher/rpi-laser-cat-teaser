@@ -57,6 +57,21 @@ func (e *Editor) DrawCrosshead(x, y, crossheadSize, crossheadStrokeWidth int) {
 	}
 }
 
+// DrawRect on image
+func (e *Editor) DrawRect(x0, y0, x1, y1 int) {
+	imageSize := e.Image.Bounds().Size()
+	cRed := &color.RGBA{255, 0, 0, 255}
+
+	for x := x0; x <= x1 && x <= imageSize.X; x++ {
+		e.Image.Set(x, y0, cRed)
+		e.Image.Set(x, y1, cRed)
+	}
+	for y := y0; y <= y1 && y <= imageSize.Y; y++ {
+		e.Image.Set(x0, y, cRed)
+		e.Image.Set(x1, y, cRed)
+	}
+}
+
 // DiffGreen diff with another image based green channel
 func (e *Editor) DiffGreen(img image.Image, threshold uint32) [][]int {
 	cDiff := &color.RGBA{255, 255, 0, 255}
@@ -70,11 +85,14 @@ func (e *Editor) DiffGreen(img image.Image, threshold uint32) [][]int {
 
 	for x := 0; x < w; x++ {
 		for y := 0; y < h; y++ {
+			//TODO  what channel to use, detector still self-triggers by laser dot
 			_, g1, _, _ := e.Image.At(x, y).RGBA()
 			_, g2, _, _ := img.At(x, y).RGBA()
 			if colorDiff(g1, g2) > threshold {
 				e.Image.Set(x, y, cDiff)
 				diffArray[x][y] = 1
+				//} else {
+				//	e.Image.Set(x, y, &color.RGBA{0, uint8(g2), 0, 255})
 			}
 		}
 	}

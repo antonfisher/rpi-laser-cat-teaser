@@ -62,7 +62,7 @@ func (s *ImageStream) parseRaspividOutput(output io.ReadCloser, ch chan []byte) 
 	for {
 		// read raspivid output by chunks
 		var readBuffer = make([]byte, 4096) //TODO try other values
-		n, err := output.Read(readBuffer)
+		n, err := output.Read(readBuffer)   // check n like there: https://golang.org/doc/effective_go.html#defer
 		if err != nil {
 			fmt.Printf("[raspivid ImageStream] read output error: %s\n", err)
 			close(ch)

@@ -62,20 +62,25 @@ func main() {
 
 	// detect motion in stream, move laser dot
 	cancelCh := make(chan bool)
-	streamCh, motionPointsCh := detector.DetectMotion(raspividImageCh, cancelCh)
+	detectorImageCh, motionPointsCh := detector.DetectMotion(raspividImageCh, cancelCh)
 
 	// move laser dot
 	go func() {
+		var previousPoint detector.Point
 		for {
 			point := <-motionPointsCh
-			servoFieldXY.Point(float64(point.X/streamWidth), float64(point.Y/streamHeight))
+			if point.X != previousPoint.X || point.Y != previousPoint.Y {
+				previousPoint = point
+				fmt.Printf("move to: %v %v\n", point.X, point.Y)
+				servoFieldXY.LineTo(float64(point.X)/float64(streamWidth), float64(point.Y)/float64(streamHeight))
+			}
 		}
 	}()
 
 	streamServer := &mjpeg.Server{
 		Addr:      ":8081",
 		StreamURL: "/stream",
-		Source:    streamCh,
+		Source:    detectorImageCh,
 	}
 
 	signalCh := make(chan os.Signal, 1)
@@ -103,12 +108,7 @@ func createServoFieldXY() (*servo.FieldXY, error) {
 		return nil, err
 	}
 
-	return &servo.FieldXY{
-		ServoX:         servoX,
-		ServoY:         servoY,
-		FlipHorizontal: true,
-		FlipVertical:   true,
-	}, nil
+	return servo.NewFieldXY(servoX, servoY, true, true), nil
 }
 
 func startRaspividStream() (chan []byte, error) {
