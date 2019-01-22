@@ -9,6 +9,14 @@ import (
 	"image/jpeg"
 )
 
+// Colors
+var (
+	ColorYellow = color.RGBA{255, 255, 0, 255}
+	ColorGreen  = color.RGBA{0, 255, 0, 255}
+	ColorBlue   = color.RGBA{0, 0, 255, 255}
+	ColorRed    = color.RGBA{255, 0, 0, 255}
+)
+
 // Drawer to draw shapes on image
 type Drawer struct {
 	img image.RGBA
@@ -43,7 +51,6 @@ func (d *Drawer) JpegBytes(quality int) []byte {
 // DrawCrosshead on image
 func (d *Drawer) DrawCrosshead(x, y, crossheadSize, crossheadStrokeWidth int) {
 	imgSize := d.img.Bounds().Size()
-	cBlue := &color.RGBA{0, 0, 255, 255}
 
 	for i := 0; i < crossheadSize; i++ {
 		if i > crossheadSize/3 && i < crossheadSize*2/3 {
@@ -52,34 +59,32 @@ func (d *Drawer) DrawCrosshead(x, y, crossheadSize, crossheadStrokeWidth int) {
 		for w := -crossheadStrokeWidth / 2; w < crossheadStrokeWidth/2; w++ {
 			xd := x - crossheadSize/2 + i
 			if xd >= 0 && xd < imgSize.X && y >= 0 && y < imgSize.Y {
-				d.img.Set(xd, y+w, cBlue)
+				d.img.Set(xd, y+w, ColorBlue)
 			}
 			yd := y - crossheadSize/2 + i
 			if x >= 0 && x < imgSize.X && yd >= 0 && yd < imgSize.Y {
-				d.img.Set(x+w, yd, cBlue)
+				d.img.Set(x+w, yd, ColorBlue)
 			}
 		}
 	}
 }
 
 // DrawRect on image
-func (d *Drawer) DrawRect(x0, y0, x1, y1 int) {
+func (d *Drawer) DrawRect(x0, y0, x1, y1 int, c color.RGBA) {
 	imgSize := d.img.Bounds().Size()
-	cRed := &color.RGBA{255, 0, 0, 255}
 
 	for x := x0; x <= x1 && x <= imgSize.X; x++ {
-		d.img.Set(x, y0, cRed)
-		d.img.Set(x, y1, cRed)
+		d.img.Set(x, y0, c)
+		d.img.Set(x, y1, c)
 	}
 	for y := y0; y <= y1 && y <= imgSize.Y; y++ {
-		d.img.Set(x0, y, cRed)
-		d.img.Set(x1, y, cRed)
+		d.img.Set(x0, y, c)
+		d.img.Set(x1, y, c)
 	}
 }
 
 // DiffGreen diff with another image based on green channel
 func (d *Drawer) DiffGreen(img image.RGBA, threshold uint32) [][]int {
-	cDiff := &color.RGBA{255, 255, 0, 255} // yellow
 	w := d.Width()
 	h := d.Height()
 
@@ -96,7 +101,7 @@ func (d *Drawer) DiffGreen(img image.RGBA, threshold uint32) [][]int {
 			_, g1, _, _ := d.img.At(x, y).RGBA()
 			_, g2, _, _ := img.At(x, y).RGBA()
 			if absUInt32Diff(g1, g2) > threshold {
-				d.img.Set(x, y, cDiff)
+				d.img.Set(x, y, ColorYellow)
 				diffArray[x][y] = 1
 				// } else {
 				// 	d.img.Set(x, y, &color.RGBA{0, uint8(g2), 0, 255})

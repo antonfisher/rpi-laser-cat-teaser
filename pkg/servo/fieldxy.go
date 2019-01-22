@@ -1,14 +1,17 @@
 package servo
 
 import (
-	"fmt"
 	"math"
 	"sync"
 	"time"
 )
 
-//const keepAwayR = 0.45
 const keepAwayR = 0.5
+const floatEpsilon = 0.001
+
+func distance(x0, y0, x1, y1 float64) float64 {
+	return math.Sqrt(math.Pow(x0-x1, 2) + math.Pow(y0-y1, 2))
+}
 
 //PercentPoint - a point percent values of XY
 type PercentPoint struct {
@@ -26,10 +29,38 @@ type FieldXY struct {
 	CurrentPercentPointCh chan PercentPoint
 
 	sync.Mutex
-	currentX         float64
-	currentY         float64
-	cancelNoiseCh    chan struct{}
-	cancelMovementCh chan struct{}
+	currentX      float64
+	currentY      float64
+	targetX       float64
+	targetY       float64
+	cancelNoiseCh chan struct{}
+}
+
+func (f *FieldXY) tick() {
+	f.Lock()
+	currentX := f.currentX
+	currentY := f.currentY
+	targetX := f.targetX
+	targetY := f.targetY
+	f.Unlock()
+
+	d := distance(currentX, currentY, targetX, targetY)
+	if d < floatEpsilon {
+		return
+	}
+
+	stepCount := int(d * 100)
+	if stepCount < 0 {
+		stepCount *= -1
+	}
+	if stepCount < 1 {
+		stepCount = 1
+	}
+
+	dX := (targetX - currentX) / float64(stepCount)
+	dY := (targetY - currentY) / float64(stepCount)
+
+	f.SetPoint(currentX+dX, currentY+dY)
 }
 
 // SetPoint moves servos to a single point on the field
@@ -57,68 +88,12 @@ func (f *FieldXY) SetPoint(x, y float64) {
 	f.ServoY.SetPercent(y)
 }
 
-// Line draws a line on the field
-func (f *FieldXY) Line(x0, y0, x1, y1 float64) {
-	// cancel previous movement if still running
-	if f.cancelMovementCh != nil {
-		select {
-		case f.cancelMovementCh <- struct{}{}:
-		default:
-		}
-	}
-
-	go func(x0, y0, x1, y1 float64) {
-		f.Lock()
-		f.cancelMovementCh = make(chan struct{})
-		f.Unlock()
-		defer func() {
-			f.Lock()
-			f.cancelMovementCh = nil
-			f.Unlock()
-		}()
-
-		stepCount := int(distance(x0, y0, x1, y1) * 100)
-		if stepCount < 0 {
-			stepCount *= -1
-		}
-		if stepCount < 5 {
-			stepCount = 5
-		}
-		fmt.Printf("steps: %v\n", stepCount)
-		stepX := (x1 - x0) / float64(stepCount)
-		stepY := (y1 - y0) / float64(stepCount)
-		step := 0
-		ticker := time.NewTicker(time.Second / 4 / time.Duration(stepCount-1))
-		defer ticker.Stop()
-		var dX, dY float64
-		for {
-			select {
-			case <-f.cancelMovementCh:
-				//ticker.Stop()
-				fmt.Println("movement canceled")
-				return
-			case <-ticker.C:
-				f.SetPoint(x0+dX, y0+dY)
-				dX += stepX
-				dY += stepY
-				step++
-				if step == stepCount {
-					//ticker.Stop()
-					return
-				}
-			}
-		}
-	}(x0, y0, x1, y1)
-}
-
 // LineTo - smooth movement to the point from current position
 func (f *FieldXY) LineTo(x, y float64) {
 	f.Lock()
-	currentX := f.currentX
-	currentY := f.currentY
+	f.targetX = x
+	f.targetY = y
 	f.Unlock()
-
-	f.Line(currentX, currentY, x, y)
 }
 
 // RunAway from the point
@@ -204,12 +179,7 @@ func (f *FieldXY) RunAway(x, y float64) {
 		}
 	}
 
-	//f.SetPoint(dotX/4, dotY/3)
 	f.LineTo(dotX/4, dotY/3)
-}
-
-func distance(x0, y0, x1, y1 float64) float64 {
-	return math.Sqrt(math.Pow(x0-x1, 2) + math.Pow(y0-y1, 2))
 }
 
 // SetRandomMovements - move dot a little bit
@@ -227,7 +197,6 @@ func (f *FieldXY) SetRandomMovements(step float64, interval time.Duration) {
 			for {
 				select {
 				case <-f.cancelNoiseCh:
-					fmt.Println("noise canceled")
 					ticker.Stop()
 					return
 				case <-ticker.C:
@@ -270,7 +239,7 @@ func (f *FieldXY) MoveRandom(step float64) {
 
 // NewFieldXY creates new FieldXY
 func NewFieldXY(servoX, servoY *Servo, flipHorizontal, flipVertical bool) *FieldXY {
-	return &FieldXY{
+	fieldXY := &FieldXY{
 		ServoX:                servoX,
 		ServoY:                servoY,
 		FlipHorizontal:        flipHorizontal,
@@ -278,4 +247,16 @@ func NewFieldXY(servoX, servoY *Servo, flipHorizontal, flipVertical bool) *Field
 		CurrentPercentPointCh: make(chan PercentPoint),
 		cancelNoiseCh:         make(chan struct{}),
 	}
+
+	ticker := time.NewTicker(time.Second / 200)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				fieldXY.tick()
+			}
+		}
+	}()
+
+	return fieldXY
 }

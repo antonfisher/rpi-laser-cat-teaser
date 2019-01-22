@@ -34,6 +34,9 @@ var (
 	streamWidth  = 1 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
 	streamHeight = 1 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
 	streamFPS    = 15
+
+	// motion detector
+	blindSpotRadius = streamWidth / 5
 )
 
 // LastState of detector
@@ -128,7 +131,15 @@ func main() {
 
 			lastState.Lock()
 
-			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img)
+			// do not detect laser dot itself
+			blindSpot := &detector.Rect{
+				X0: lastState.DotPoint.X - blindSpotRadius,
+				Y0: lastState.DotPoint.Y - blindSpotRadius,
+				X1: lastState.DotPoint.X + blindSpotRadius,
+				Y1: lastState.DotPoint.Y + blindSpotRadius,
+			}
+
+			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img, blindSpot)
 			lastState.Img = img
 
 			// move laser dot
@@ -143,15 +154,24 @@ func main() {
 				// run away from the motion
 				servoFieldXY.RunAway(motionX, motionY)
 
-				// track to the motion
+				//DEBUG: track to the motion
 				//servoFieldXY.LineTo(motionX, motionY)
 			}
 
 			// draw debug infomation
 			imgDrawer := drawer.New(debugImg)
 
+			// draw blind spot
+			imgDrawer.DrawRect(
+				blindSpot.X0,
+				blindSpot.Y0,
+				blindSpot.X1,
+				blindSpot.Y1,
+				drawer.ColorGreen,
+			)
+
 			// draw current dot position
-			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, 20, 2)
+			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, blindSpotRadius, 2)
 
 			// draw detected motion
 			imgDrawer.DrawRect(
@@ -159,6 +179,7 @@ func main() {
 				lastState.MotionPoint.Rect.Y0,
 				lastState.MotionPoint.Rect.X1,
 				lastState.MotionPoint.Rect.Y1,
+				drawer.ColorRed,
 			)
 
 			lastState.Unlock()

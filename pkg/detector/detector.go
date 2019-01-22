@@ -27,12 +27,22 @@ type Point struct {
 
 // DetectMotion takes a channel with image.RGBA stream and
 // returns a channel of XY Points of detected motion
-func DetectMotion(img, previousImg image.RGBA) (debugImg image.RGBA, motionPoint Point) {
+func DetectMotion(img, previousImg image.RGBA, blindSpot *Rect) (debugImg image.RGBA, motionPoint Point) {
 	defer debug.LogExecutionTime("motion detection", time.Now())
 
 	imgDrawer := drawer.New(img)
 	debugImgDrawer := imgDrawer.Clone()                              //TODO is clone needed here?
 	diffArray := debugImgDrawer.DiffGreen(previousImg, uint32(7500)) //TODO move to function arguments
+
+	if blindSpot != nil && len(diffArray) > 0 {
+		for x := blindSpot.X0; x <= blindSpot.X1; x++ {
+			for y := blindSpot.Y0; y <= blindSpot.Y1; y++ {
+				if x >= 0 && x < len(diffArray) && y >= 0 && y < len(diffArray[0]) {
+					diffArray[x][y] = 0
+				}
+			}
+		}
+	}
 
 	debugImg = debugImgDrawer.Img()
 	motionPoint = findCenterPoint(diffArray)
