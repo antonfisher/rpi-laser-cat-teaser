@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-const keepAwayR = 0.5
 const floatEpsilon = 0.001
 
 func distance(x0, y0, x1, y1 float64) float64 {
@@ -97,7 +96,7 @@ func (f *FieldXY) LineTo(x, y float64) {
 }
 
 // RunAway from the point
-func (f *FieldXY) RunAway(x, y float64) {
+func (f *FieldXY) RunAway(x, y, radius float64, alwaysStayOnRadius bool) {
 	f.Lock()
 	dotX := f.currentX * 4
 	dotY := f.currentY * 3
@@ -109,13 +108,13 @@ func (f *FieldXY) RunAway(x, y float64) {
 	x = x * 4
 	y = y * 3
 
-	keepAwayR := keepAwayR * 4
+	keepAwayR := radius * 4
 
 	// closest point from the current laser position to the "keep away" circle
 	kaX := x + (keepAwayR*(dotX-x))/math.Sqrt(math.Pow(dotX-x, 2)+math.Pow(dotY-y, 2))
 	kaY := y + (keepAwayR*(dotY-y))/math.Sqrt(math.Pow(dotX-x, 2)+math.Pow(dotY-y, 2))
 
-	if distance(x, y, dotX, dotY) < distance(x, y, kaX, kaY) {
+	if !alwaysStayOnRadius && distance(x, y, dotX, dotY) < distance(x, y, kaX, kaY) {
 		dotX = kaX
 		dotY = kaY
 	}

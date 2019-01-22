@@ -2,9 +2,7 @@ package detector
 
 import (
 	"image"
-	"time"
 
-	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/debug"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/drawer"
 )
 
@@ -28,8 +26,6 @@ type Point struct {
 // DetectMotion takes a channel with image.RGBA stream and
 // returns a channel of XY Points of detected motion
 func DetectMotion(img, previousImg image.RGBA, blindSpot *Rect) (debugImg image.RGBA, motionPoint Point) {
-	defer debug.LogExecutionTime("motion detection", time.Now())
-
 	imgDrawer := drawer.New(img)
 	debugImgDrawer := imgDrawer.Clone()                              //TODO is clone needed here?
 	diffArray := debugImgDrawer.DiffGreen(previousImg, uint32(7500)) //TODO move to function arguments

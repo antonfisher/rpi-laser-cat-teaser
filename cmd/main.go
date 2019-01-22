@@ -36,7 +36,18 @@ var (
 	streamFPS    = 15
 
 	// motion detector
-	blindSpotRadius = streamWidth / 5
+	blindSpotRadius = streamWidth / 15 // blind radius to prevent self-detection
+
+	// run-away algorithm
+	runAwayRadius             = 0.5   // as percent of view area width
+	alwaysStayOnRunAwayRadius = false // run after motion if it's futher then run-away radius
+
+	// random dot movements
+	randomMovementsAmplitude = 0.02 // as percent of view area width
+	randomMovementsInterval  = time.Second * 2
+
+	// enable debug mode (prints FPS)
+	debug = true
 )
 
 // LastState of detector
@@ -105,8 +116,10 @@ func main() {
 		errorAndExit(err)
 	}
 
-	// generate random dot movements
-	servoFieldXY.SetRandomMovements(0.01, time.Second*2)
+	// generate random laser dot movements
+	if randomMovementsAmplitude > 0.001 {
+		servoFieldXY.SetRandomMovements(randomMovementsAmplitude, randomMovementsInterval)
+	}
 
 	// start raspivid stream
 	raspividImageCh, err := startRaspividStream()
@@ -114,14 +127,17 @@ func main() {
 		errorAndExit(err)
 	}
 
-	// image with detected motion highlighting and current dot position
+	// channel of images with detected motion highlighting and current dot position
 	debugImageCh := make(chan []byte)
 
 	var lastState LastState
 
 	// read input jpeg stream, move laser dot and send debug image to output stream
 	go func() {
+		var startTime time.Time
 		for {
+			startTime = time.Now()
+
 			jpegBytes := <-raspividImageCh
 			img, err := drawer.ImageRGBAFromJpegBytes(jpegBytes)
 			if err != nil {
@@ -152,7 +168,7 @@ func main() {
 				motionY := float64(motionPoint.Y) / float64(streamHeight)
 
 				// run away from the motion
-				servoFieldXY.RunAway(motionX, motionY)
+				servoFieldXY.RunAway(motionX, motionY, runAwayRadius, alwaysStayOnRunAwayRadius)
 
 				//DEBUG: track to the motion
 				//servoFieldXY.LineTo(motionX, motionY)
@@ -185,6 +201,10 @@ func main() {
 			lastState.Unlock()
 
 			debugImageCh <- imgDrawer.JpegBytes(100)
+
+			if debug {
+				fmt.Printf("fps: %5.1f\tframe took: %s\n", 1/time.Since(startTime).Seconds(), time.Since(startTime))
+			}
 		}
 	}()
 
