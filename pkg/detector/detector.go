@@ -1,12 +1,11 @@
 package detector
 
 import (
-	"fmt"
 	"image"
 	"time"
 
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/debug"
-	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/editor"
+	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/drawer"
 )
 
 // Rect is a rectangle represented by two points
@@ -26,58 +25,23 @@ type Point struct {
 	Rect Rect
 }
 
-// DetectMotion - takes a channel with images stream and returns:
-// - a channel of images with motion indication
-// - a channel of XY Points of detected motion
-func DetectMotion(inputStreamCh chan []byte, cancelCh chan bool) (chan []byte, chan Point) {
-	outputStreamCh := make(chan []byte)
-	motionPointsCh := make(chan Point)
+// DetectMotion takes a channel with image.RGBA stream and
+// returns a channel of XY Points of detected motion
+func DetectMotion(img, previousImg image.RGBA) (debugImg image.RGBA, motionPoint Point) {
+	defer debug.LogExecutionTime("motion detection", time.Now())
 
-	go func() {
-		var prevImage image.Image
-		var diffArray [][]int
-		var lastDetectedPoint Point
-	Loop:
-		for {
-			select {
-			case <-cancelCh:
-				break Loop
-			case img := <-inputStreamCh:
-				startTime := time.Now()
-				imageEditor, err := editor.NewEditorFromJpegBytes(img)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				imageBeforeEdit := imageEditor.Clone()
-				if prevImage != nil {
-					diffArray = imageEditor.DiffGreen(prevImage, uint32(7500))
-					detectedPoint := findCenter(diffArray)
-					if detectedPoint.X > 0 || detectedPoint.Y > 0 {
-						lastDetectedPoint = detectedPoint
-						//fmt.Printf("detected point: %+v\n", detectedPoint)
-						motionPointsCh <- detectedPoint
-					}
-					imageEditor.DrawCrosshead(lastDetectedPoint.X, lastDetectedPoint.Y, 20, 2)
-					imageEditor.DrawRect(
-						lastDetectedPoint.Rect.X0,
-						lastDetectedPoint.Rect.Y0,
-						lastDetectedPoint.Rect.X1,
-						lastDetectedPoint.Rect.Y1,
-					)
-				}
-				outputStreamCh <- imageEditor.JpegBytes(90)
-				prevImage = imageBeforeEdit
-				debug.LogExecutionTime("motion detection", startTime)
-			}
-		}
-	}()
+	imgDrawer := drawer.New(img)
+	debugImgDrawer := imgDrawer.Clone()                              //TODO is clone needed here?
+	diffArray := debugImgDrawer.DiffGreen(previousImg, uint32(7500)) //TODO move to function arguments
 
-	return outputStreamCh, motionPointsCh
+	debugImg = debugImgDrawer.Img()
+	motionPoint = findCenterPoint(diffArray)
+
+	return
 }
 
-//findCenter of binary presented shape
-func findCenter(a [][]int) Point {
+//findCenterPoint of binary presented shape
+func findCenterPoint(a [][]int) Point {
 	var x0, y0, x1, y1 int
 
 	for x, row := range a {

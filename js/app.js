@@ -34,7 +34,7 @@ const centerY = H / 2;
 
 // laser params
 const laserR = 5;
-const laserSpinR = 10; // spin
+const laserSpinR = 5; // spin
 let laserX = centerX;
 let laserY = centerY;
 
@@ -50,35 +50,81 @@ canvasEl.addEventListener('mousemove', ev => {
   //algorithmKeepTheCenter(catX, catY);
   algorithmRunAway(catX, catY);
 
-  laserX = Math.min(W - laserSpinR / 2 - laserR / 2, Math.max(laserX, laserSpinR / 2  - laserR / 2));
-  laserY = Math.min(H - laserSpinR / 2 - laserR / 2, Math.max(laserY, laserSpinR / 2  - laserR / 2));
+  laserX = Math.min(W - laserSpinR / 2 - laserR / 2, Math.max(laserX, laserSpinR / 2 - laserR / 2));
+  laserY = Math.min(H - laserSpinR / 2 - laserR / 2, Math.max(laserY, laserSpinR / 2 - laserR / 2));
 
   log({ keepAwayR, catX, catY, laserX, laserY });
 });
 
-const path = []
-
 // laser dot runs away from the cat if it too close
 function algorithmRunAway(catX, catY) {
-  fromCatToLaser = distance(catX, catY, laserX, laserY);
+  // closest point from the current laser position to the "keep away" circle
+  const kaX = catX + (keepAwayR * (laserX - catX)) / Math.sqrt(Math.pow(laserX - catX, 2) + Math.pow(laserY - catY, 2));
+  const kaY = catY + (keepAwayR * (laserY - catY)) / Math.sqrt(Math.pow(laserX - catX, 2) + Math.pow(laserY - catY, 2));
 
-  if (fromCatToLaser < keepAwayR) {
-    laserX = catX + (keepAwayR * (laserX - catX)) / Math.sqrt(Math.pow(laserX - catX, 2) + Math.pow(laserY - catY, 2));
-    laserY = catY + (keepAwayR * (laserY - catY)) / Math.sqrt(Math.pow(laserX - catX, 2) + Math.pow(laserY - catY, 2));
+  if (distance(catX, catY, laserX, laserY) < distance(catX, catY, kaX, kaY)) {
+    laserX = kaX;
+    laserY = kaY;
+  }
 
-    // pushed out of canvas
-    let alpha = (catY - laserY < 0 ? 1 : -1) * Math.acos((catX - laserX) / keepAwayR) - Math.PI / 2;
-    if (laserX < 0 || laserX > W || laserY < 0 || laserY > H) {
-      console.log('## alpha', alpha, alpha * 180 / Math.PI);
-      log({ alpha: alpha * 180 / Math.PI });
+  // pushed out of canvas
+  if (laserX < 0 || laserX > W || laserY < 0 || laserY > H) {
+    const intersections = [];
+    // pushed to the top
+    if (catY - keepAwayR < 0) {
+      const dx = Math.sqrt(Math.pow(keepAwayR, 2) - Math.pow(catY, 2));
+      if (0 <= catX + dx && catX + dx <= W) {
+        intersections.push({ x: catX + dx, y: 0 });
+      }
+      if (0 <= catX - dx && catX - dx <= W) {
+        intersections.push({ x: catX - dx, y: 0 });
+      }
     }
-    while (laserX < 0 || laserX > W || laserY < 0 || laserY > H) {
-      laserX = catX + keepAwayR * Math.sin(alpha);
-      laserY = catY + keepAwayR * Math.cos(alpha);
-      alpha += 0.01;
-
-      //debug
-      path.push([laserX, laserY])
+    // pushed to the bottom
+    if (catY + keepAwayR > H) {
+      const dx = Math.sqrt(Math.pow(keepAwayR, 2) - Math.pow(H - catY, 2));
+      if (0 <= catX + dx && catX + dx <= W) {
+        intersections.push({ x: catX + dx, y: H });
+      }
+      if (0 <= catX - dx && catX - dx <= W) {
+        intersections.push({ x: catX - dx, y: H });
+      }
+    }
+    // pushed to the left
+    if (catX - keepAwayR < 0) {
+      const dy = Math.sqrt(Math.pow(keepAwayR, 2) - Math.pow(catX, 2));
+      if (0 <= catY + dy && catY + dy <= H) {
+        intersections.push({ x: 0, y: catY + dy });
+      }
+      if (0 <= catY - dy && catY - dy <= H) {
+        intersections.push({ x: 0, y: catY - dy });
+      }
+    }
+    // pushed to the right
+    if (catX + keepAwayR > W) {
+      const dy = Math.sqrt(Math.pow(keepAwayR, 2) - Math.pow(W - catX, 2));
+      if (0 <= catY + dy && catY + dy <= H) {
+        intersections.push({ x: W, y: catY + dy });
+      }
+      if (0 <= catY - dy && catY - dy <= H) {
+        intersections.push({ x: W, y: catY - dy });
+      }
+    }
+    log({ intersections_length: intersections.length });
+    if (intersections.length > 0) {
+      let minDistance = keepAwayR;
+      let minDistanceX = intersections[0].x;
+      let minDistanceY = intersections[0].y;
+      for (let i = 0; i < intersections.length; i++) {
+        const d = distance(laserX, laserY, intersections[i].x, intersections[i].y);
+        if (d < minDistance) {
+          minDistance = d;
+          minDistanceX = intersections[i].x;
+          minDistanceY = intersections[i].y;
+        }
+      }
+      laserX = minDistanceX;
+      laserY = minDistanceY;
     }
   }
 }
@@ -115,8 +161,8 @@ function algorithmBounce() {
 }
 //algorithmBounce()
 
-function distance(x1, y1, x2, y2) {
-  return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+function distance(x0, y0, x1, y1) {
+  return Math.sqrt(Math.pow(x0 - x1, 2) + Math.pow(y0 - y1, 2));
 }
 
 // spin laser dot
@@ -131,19 +177,11 @@ setInterval(() => {
   if (laserShiftAngle <= 0 || laserShiftAngle >= 2 * Math.PI) {
     laserShiftSpeed *= -1;
   }
-}, 20);
+}, 10);
 
 // the main loop
 function loop() {
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-
-  path.forEach((v) => {
-    ctx.beginPath();
-      ctx.arc(v[0], v[1], 10, 0, Math.PI * 2, true);
-      ctx.strokeStyle = '#dfd';
-      ctx.stroke();
-      ctx.closePath();
-  });
 
   // cat
   ctx.beginPath();

@@ -2,12 +2,16 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"os/signal"
+	"sync"
+	"time"
 
 	"github.com/stianeikeland/go-rpio"
 
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/detector"
+	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/drawer"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/mjpeg"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/raspivid"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/servo"
@@ -27,74 +31,23 @@ var (
 
 	// raspivid stream
 	// keep 4 x 3 dimension, otherwise raspivid will crop the image
-	streamWidth  = 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
-	streamHeight = 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
+	streamWidth  = 1 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
+	streamHeight = 1 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
 	streamFPS    = 15
 )
+
+// LastState of detector
+type LastState struct {
+	sync.Mutex
+
+	Img         image.RGBA     // previous analyzed image
+	DotPoint    image.Point    // current dot position from servo field controller
+	MotionPoint detector.Point // previous detected motion point
+}
 
 func errorAndExit(err error) {
 	fmt.Println(err)
 	os.Exit(1)
-}
-
-func main() {
-	// prepare RPi GPIO hardware
-	err := rpio.Open()
-	if err != nil {
-		errorAndExit(err)
-	}
-	defer rpio.Close()
-
-	rpio.StartPwm()
-	defer rpio.StopPwm()
-
-	// create servos XY field
-	servoFieldXY, err := createServoFieldXY()
-	if err != nil {
-		errorAndExit(err)
-	}
-
-	// start raspivid stream
-	raspividImageCh, err := startRaspividStream()
-	if err != nil {
-		errorAndExit(err)
-	}
-
-	// detect motion in stream, move laser dot
-	cancelCh := make(chan bool)
-	detectorImageCh, motionPointsCh := detector.DetectMotion(raspividImageCh, cancelCh)
-
-	// move laser dot
-	go func() {
-		var previousPoint detector.Point
-		for {
-			point := <-motionPointsCh
-			if point.X != previousPoint.X || point.Y != previousPoint.Y {
-				previousPoint = point
-				fmt.Printf("move to: %v %v\n", point.X, point.Y)
-				servoFieldXY.LineTo(float64(point.X)/float64(streamWidth), float64(point.Y)/float64(streamHeight))
-			}
-		}
-	}()
-
-	streamServer := &mjpeg.Server{
-		Addr:      ":8081",
-		StreamURL: "/stream",
-		Source:    detectorImageCh,
-	}
-
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt)
-	go func() {
-		<-signalCh
-		//raspividImageStream.Stop()
-		//streamServer.Stop()
-		fmt.Println("Interrupted by user...")
-		os.Exit(0)
-	}()
-
-	// start
-	streamServer.ListenAndServe()
 }
 
 func createServoFieldXY() (*servo.FieldXY, error) {
@@ -118,7 +71,7 @@ func startRaspividStream() (chan []byte, error) {
 		Height: streamHeight,
 		Options: []string{
 			"--vflip", // set vertical flip
-			"--hflip", // set horisontal flip
+			"--hflip", // set horizontal flip
 			//"--saturation", "-100", // set image saturation (-100 to 100), -100 for grayscale
 			//"--annotate", "12", // add timestamp (enable/set annotate flags or text)
 		},
@@ -130,4 +83,117 @@ func startRaspividStream() (chan []byte, error) {
 	}
 
 	return raspividImageCh, nil
+}
+
+func main() {
+	// prepare RPi GPIO hardware
+	err := rpio.Open()
+	if err != nil {
+		errorAndExit(err)
+	}
+	defer rpio.Close()
+
+	rpio.StartPwm()
+	defer rpio.StopPwm()
+
+	// create servos XY field
+	servoFieldXY, err := createServoFieldXY()
+	if err != nil {
+		errorAndExit(err)
+	}
+
+	// generate random dot movements
+	servoFieldXY.SetRandomMovements(0.01, time.Second*2)
+
+	// start raspivid stream
+	raspividImageCh, err := startRaspividStream()
+	if err != nil {
+		errorAndExit(err)
+	}
+
+	// image with detected motion highlighting and current dot position
+	debugImageCh := make(chan []byte)
+
+	var lastState LastState
+
+	// read input jpeg stream, move laser dot and send debug image to output stream
+	go func() {
+		for {
+			jpegBytes := <-raspividImageCh
+			img, err := drawer.ImageRGBAFromJpegBytes(jpegBytes)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			lastState.Lock()
+
+			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img)
+			lastState.Img = img
+
+			// move laser dot
+			notZeroPoint := motionPoint.X != 0 || motionPoint.Y != 0
+			pointMoved := motionPoint.X != lastState.MotionPoint.X || motionPoint.Y != lastState.MotionPoint.Y
+			if notZeroPoint && pointMoved {
+				lastState.MotionPoint = motionPoint
+
+				motionX := float64(motionPoint.X) / float64(streamWidth)
+				motionY := float64(motionPoint.Y) / float64(streamHeight)
+
+				// run away from the motion
+				servoFieldXY.RunAway(motionX, motionY)
+
+				// track to the motion
+				//servoFieldXY.LineTo(motionX, motionY)
+			}
+
+			// draw debug infomation
+			imgDrawer := drawer.New(debugImg)
+
+			// draw current dot position
+			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, 20, 2)
+
+			// draw detected motion
+			imgDrawer.DrawRect(
+				lastState.MotionPoint.Rect.X0,
+				lastState.MotionPoint.Rect.Y0,
+				lastState.MotionPoint.Rect.X1,
+				lastState.MotionPoint.Rect.Y1,
+			)
+
+			lastState.Unlock()
+
+			debugImageCh <- imgDrawer.JpegBytes(100)
+		}
+	}()
+
+	// save current laser dot position to draw on debug image
+	go func() {
+		for {
+			p := <-servoFieldXY.CurrentPercentPointCh
+			lastState.Lock()
+			lastState.DotPoint = image.Point{
+				X: int(float64(streamWidth) * p.X),
+				Y: int(float64(streamHeight) * p.Y),
+			}
+			lastState.Unlock()
+		}
+	}()
+
+	streamServer := &mjpeg.Server{
+		Addr:      ":8081",
+		StreamURL: "/stream",
+		Source:    debugImageCh,
+	}
+
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt)
+	go func() {
+		<-signalCh
+		fmt.Println("Interrupted by user...")
+		os.Exit(0)
+	}()
+
+	// start
+	streamServer.ListenAndServe()
 }
