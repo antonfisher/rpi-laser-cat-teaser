@@ -17,15 +17,16 @@ import (
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/servo"
 )
 
+//TODO add flags
 // application config
 var (
 	// servo X
-	servoPinX                        = servo.RpiPwmPin12
+	servoXPin                        = servo.RpiPwmPin12
 	servoXMinAnglePulseLength uint32 = 74 // tested camera angle min (tested servo min: 49)  [right]
 	servoXMaxAnglePulseLength uint32 = 97 // tested camera angle max (tested servo max: 114) [left ]
 
 	// servo Y
-	servoPinY                        = servo.RpiPwmPin13
+	servoYPin                        = servo.RpiPwmPin13
 	servoYMinAnglePulseLength uint32 = 56 // tested camera angle min (tested servo min: 28)  [down]
 	servoYMaxAnglePulseLength uint32 = 75 // tested camera angle max (tested servo max: 104) [up  ]
 
@@ -33,10 +34,11 @@ var (
 	// keep 4 x 3 dimension, otherwise raspivid will crop the image
 	streamWidth  = 1 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
 	streamHeight = 1 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
-	streamFPS    = 15
+	streamFPS    = 24
 
 	// motion detector
-	blindSpotRadius = streamWidth / 15 // blind radius to prevent self-detection
+	detectorThreshold       uint32 = 7500             // color difference sensitivity
+	detectorBlindSpotRadius        = streamWidth / 15 // blind radius to prevent self-detection
 
 	// run-away algorithm
 	runAwayRadius             = 0.5   // as percent of view area width
@@ -65,12 +67,12 @@ func errorAndExit(err error) {
 }
 
 func createServoFieldXY() (*servo.FieldXY, error) {
-	servoX, err := servo.NewServo(servoPinX, servoXMinAnglePulseLength, servoXMaxAnglePulseLength)
+	servoX, err := servo.NewServo(servoXPin, servoXMinAnglePulseLength, servoXMaxAnglePulseLength)
 	if err != nil {
 		return nil, err
 	}
 
-	servoY, err := servo.NewServo(servoPinY, servoYMinAnglePulseLength, servoYMaxAnglePulseLength)
+	servoY, err := servo.NewServo(servoYPin, servoYMinAnglePulseLength, servoYMaxAnglePulseLength)
 	if err != nil {
 		return nil, err
 	}
@@ -148,14 +150,14 @@ func main() {
 			lastState.Lock()
 
 			// do not detect laser dot itself
-			blindSpot := &detector.Rect{
-				X0: lastState.DotPoint.X - blindSpotRadius,
-				Y0: lastState.DotPoint.Y - blindSpotRadius,
-				X1: lastState.DotPoint.X + blindSpotRadius,
-				Y1: lastState.DotPoint.Y + blindSpotRadius,
+			detectorBlindSpot := &detector.Rect{
+				X0: lastState.DotPoint.X - detectorBlindSpotRadius,
+				Y0: lastState.DotPoint.Y - detectorBlindSpotRadius,
+				X1: lastState.DotPoint.X + detectorBlindSpotRadius,
+				Y1: lastState.DotPoint.Y + detectorBlindSpotRadius,
 			}
 
-			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img, blindSpot)
+			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img, detectorThreshold, detectorBlindSpot)
 			lastState.Img = img
 
 			// move laser dot
@@ -179,15 +181,15 @@ func main() {
 
 			// draw blind spot
 			imgDrawer.DrawRect(
-				blindSpot.X0,
-				blindSpot.Y0,
-				blindSpot.X1,
-				blindSpot.Y1,
+				detectorBlindSpot.X0,
+				detectorBlindSpot.Y0,
+				detectorBlindSpot.X1,
+				detectorBlindSpot.Y1,
 				drawer.ColorGreen,
 			)
 
 			// draw current dot position
-			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, blindSpotRadius, 2)
+			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, detectorBlindSpotRadius, 2)
 
 			// draw detected motion
 			imgDrawer.DrawRect(
@@ -230,6 +232,7 @@ func main() {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt)
 	go func() {
+		//TODO handle this in all goroutines
 		<-signalCh
 		fmt.Println("Interrupted by user...")
 		os.Exit(0)

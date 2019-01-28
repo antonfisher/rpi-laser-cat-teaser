@@ -83,35 +83,6 @@ func (d *Drawer) DrawRect(x0, y0, x1, y1 int, c color.RGBA) {
 	}
 }
 
-// DiffGreen diff with another image based on green channel
-func (d *Drawer) DiffGreen(img image.RGBA, threshold uint32) [][]int {
-	w := d.Width()
-	h := d.Height()
-
-	//TODO use struct with one array underlines slices:
-	// https://golang.org/doc/effective_go.html#two_dimensional_slices
-	diffArray := make([][]int, w)
-	for i := range diffArray {
-		diffArray[i] = make([]int, h)
-	}
-
-	for x := 0; x < w; x++ {
-		for y := 0; y < h; y++ {
-			//TODO what color channel to use? Detector still can be self-triggers by laser dot
-			_, g1, _, _ := d.img.At(x, y).RGBA()
-			_, g2, _, _ := img.At(x, y).RGBA()
-			if absUInt32Diff(g1, g2) > threshold {
-				d.img.Set(x, y, ColorYellow)
-				diffArray[x][y] = 1
-				// } else {
-				// 	d.img.Set(x, y, &color.RGBA{0, uint8(g2), 0, 255})
-			}
-		}
-	}
-
-	return diffArray
-}
-
 // Clone current drawer
 func (d *Drawer) Clone() Drawer {
 	return Drawer{img: d.CloneImg()}
@@ -128,13 +99,6 @@ func (d *Drawer) CloneImg() image.RGBA {
 	draw.Draw(newImg, d.img.Bounds(), &d.img, image.ZP, draw.Src)
 
 	return *newImg
-}
-
-func absUInt32Diff(a, b uint32) uint32 {
-	if a > b {
-		return a - b
-	}
-	return b - a
 }
 
 // ImageRGBAFromJpegBytes creates image.RGBA from jpeg bytes
