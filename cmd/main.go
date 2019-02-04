@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
 	"os"
@@ -13,43 +14,9 @@ import (
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/detector"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/drawer"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/mjpeg"
+	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/params"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/raspivid"
 	"github.com/antonfisher/rpi-laser-cat-teaser/pkg/servo"
-)
-
-//TODO add flags
-// application config
-var (
-	// servo X
-	servoXPin                        = servo.RpiPwmPin12
-	servoXMinAnglePulseLength uint32 = 74 // tested camera angle min (tested servo min: 49)  [right]
-	servoXMaxAnglePulseLength uint32 = 97 // tested camera angle max (tested servo max: 114) [left ]
-
-	// servo Y
-	servoYPin                        = servo.RpiPwmPin13
-	servoYMinAnglePulseLength uint32 = 56 // tested camera angle min (tested servo min: 28)  [down]
-	servoYMaxAnglePulseLength uint32 = 75 // tested camera angle max (tested servo max: 104) [up  ]
-
-	// raspivid stream
-	// keep 4 x 3 dimension, otherwise raspivid will crop the image
-	streamWidth  = 1 * 4 * 32 // the horizontal resolution is rounded up to the nearest multiple of 32 pixels
-	streamHeight = 1 * 3 * 32 // the vertical resolution is rounded up to the nearest multiple of 16 pixels
-	streamFPS    = 24
-
-	// motion detector
-	detectorThreshold       uint32 = 7500             // color difference sensitivity
-	detectorBlindSpotRadius        = streamWidth / 15 // blind radius to prevent self-detection
-
-	// run-away algorithm
-	runAwayRadius             = 0.5   // as percent of view area width
-	alwaysStayOnRunAwayRadius = false // run after motion if it's futher then run-away radius
-
-	// random dot movements
-	randomMovementsAmplitude = 0.02 // as percent of view area width
-	randomMovementsInterval  = time.Second * 2
-
-	// enable debug mode (prints FPS)
-	debug = true
 )
 
 // LastState of detector
@@ -66,31 +33,24 @@ func errorAndExit(err error) {
 	os.Exit(1)
 }
 
-func createServoFieldXY() (*servo.FieldXY, error) {
-	servoX, err := servo.NewServo(servoXPin, servoXMinAnglePulseLength, servoXMaxAnglePulseLength)
-	if err != nil {
-		return nil, err
+func startRaspividStream(w, h, fps int, flipH, flipV bool) (chan []byte, error) {
+	options := []string{
+		//"--saturation", "-100", // set image saturation (-100 to 100), -100 for grayscale
+		//"--annotate", "12", // add timestamp (enable/set annotate flags or text)
 	}
 
-	servoY, err := servo.NewServo(servoYPin, servoYMinAnglePulseLength, servoYMaxAnglePulseLength)
-	if err != nil {
-		return nil, err
+	if flipH {
+		options = append(options, "--hflip") // set horizontal flip
+	}
+	if flipV {
+		options = append(options, "--vflip") // set vertical flip
 	}
 
-	return servo.NewFieldXY(servoX, servoY, true, true), nil
-}
-
-func startRaspividStream() (chan []byte, error) {
 	raspividImageStream := &raspivid.ImageStream{
-		FPS:    streamFPS,
-		Width:  streamWidth,
-		Height: streamHeight,
-		Options: []string{
-			"--vflip", // set vertical flip
-			"--hflip", // set horizontal flip
-			//"--saturation", "-100", // set image saturation (-100 to 100), -100 for grayscale
-			//"--annotate", "12", // add timestamp (enable/set annotate flags or text)
-		},
+		FPS:     fps,
+		Width:   w,
+		Height:  h,
+		Options: options,
 	}
 
 	raspividImageCh, err := raspividImageStream.Start()
@@ -102,6 +62,87 @@ func startRaspividStream() (chan []byte, error) {
 }
 
 func main() {
+	var (
+		fDebug = flag.Bool("debug", false, "print fps to output")
+
+		fCameraFPS   = flag.Int("camera-fps", params.CameraFPS, "camera fps")
+		fCameraFlipH = flag.Bool("camera-flip-h", false, "flip camera image horizontally")
+		fCameraFlipV = flag.Bool("camera-flip-v", false, "flip camera image vertical")
+		fCameraScale = flag.Int(
+			"camera-scale",
+			params.CameraScale,
+			"camera resolution scale (128*scale x 96*scale)",
+		)
+
+		fServoXFlip = flag.Bool("servo-x-flip", false, "flip servo x position calculation")
+		fServoYFlip = flag.Bool("servo-y-flip", false, "flip servo y position calculation")
+		fServoXMin  = flag.Int(
+			"servo-x-min",
+			params.ServoXMinAnglePulseLength,
+			"servo x min angle pulse length ~[20-120]",
+		)
+		fServoYMin = flag.Int(
+			"servo-y-min",
+			params.ServoYMinAnglePulseLength,
+			"servo y min angle pulse length ~[20-120]",
+		)
+		fServoXMax = flag.Int(
+			"servo-x-max",
+			params.ServoXMaxAnglePulseLength,
+			"servo x max angle pulse length ~[20-120]",
+		)
+		fServoYMax = flag.Int(
+			"servo-y-max",
+			params.ServoYMaxAnglePulseLength,
+			"servo y max angle pulse length ~[20-120]",
+		)
+
+		fStream     = flag.Bool("stream", false, "stream debug image")
+		fStreamPort = flag.String("stream-port", params.StreamPort, "stream port, url: IP:PORT/stream)")
+
+		fLaserRunAwayRadius = flag.Float64(
+			"run-away-radius",
+			params.RunAwayRadius,
+			"laser run away radius as percent of width [0-1]",
+		)
+		fFollow = flag.Bool(
+			"follow",
+			params.AlwaysStayOnRunAwayRadius,
+			"laser stays on run away radius",
+		)
+
+		fDetectorThreshold = flag.Int(
+			"detector-threshold",
+			params.DetectorThreshold,
+			"detector sensitivity threshold",
+		)
+		fDetectorBlindSpotRadius = flag.Int(
+			"detector-blind-spot-radius",
+			params.DetectorBlindSpotRadius,
+			"detector blind spot radius (to prevent self-detection)",
+		)
+
+		fRandomAmplitude = flag.Float64(
+			"ramdom-amplitude",
+			params.RandomMovementsAmplitude,
+			"laser random movements amplitude [0.005-1]",
+		)
+		fRandomInterval = flag.Int(
+			"random-interval",
+			params.RandomMovementsInterval,
+			"laser random movements interval in seconds (0 to disable)",
+		)
+
+		fVersion = flag.Bool("version", false, "print version")
+	)
+
+	flag.Parse()
+
+	if *fVersion {
+		fmt.Printf("%s@%s-%s\n", params.Name, params.Version, params.Commit)
+		os.Exit(0)
+	}
+
 	// prepare RPi GPIO hardware
 	err := rpio.Open()
 	if err != nil {
@@ -112,19 +153,31 @@ func main() {
 	rpio.StartPwm()
 	defer rpio.StopPwm()
 
-	// create servos XY field
-	servoFieldXY, err := createServoFieldXY()
+	// create servo X
+	servoX, err := servo.NewServo(params.ServoXPin, uint32(*fServoXMin), uint32(*fServoXMax))
 	if err != nil {
 		errorAndExit(err)
 	}
 
-	// generate random laser dot movements
-	if randomMovementsAmplitude > 0.001 {
-		servoFieldXY.SetRandomMovements(randomMovementsAmplitude, randomMovementsInterval)
+	// create servos Y
+	servoY, err := servo.NewServo(params.ServoYPin, uint32(*fServoYMin), uint32(*fServoYMax))
+	if err != nil {
+		errorAndExit(err)
 	}
 
+	// create servos XY field
+	servoFieldXY := servo.NewFieldXY(servoX, servoY, *fServoXFlip, *fServoYFlip)
+
+	// generate random laser dot movements
+	if *fRandomInterval > 0 {
+		servoFieldXY.SetRandomMovements(*fRandomAmplitude, time.Second*time.Duration(*fRandomInterval))
+	}
+
+	cameraWidth := params.CameraMinWidth * *fCameraScale
+	cameraHeight := params.CameraMinHeight * *fCameraScale
+
 	// start raspivid stream
-	raspividImageCh, err := startRaspividStream()
+	raspividImageCh, err := startRaspividStream(cameraWidth, cameraHeight, *fCameraFPS, *fCameraFlipH, *fCameraFlipV)
 	if err != nil {
 		errorAndExit(err)
 	}
@@ -151,13 +204,18 @@ func main() {
 
 			// do not detect laser dot itself
 			detectorBlindSpot := &detector.Rect{
-				X0: lastState.DotPoint.X - detectorBlindSpotRadius,
-				Y0: lastState.DotPoint.Y - detectorBlindSpotRadius,
-				X1: lastState.DotPoint.X + detectorBlindSpotRadius,
-				Y1: lastState.DotPoint.Y + detectorBlindSpotRadius,
+				X0: lastState.DotPoint.X - *fDetectorBlindSpotRadius,
+				Y0: lastState.DotPoint.Y - *fDetectorBlindSpotRadius,
+				X1: lastState.DotPoint.X + *fDetectorBlindSpotRadius,
+				Y1: lastState.DotPoint.Y + *fDetectorBlindSpotRadius,
 			}
 
-			debugImg, motionPoint := detector.DetectMotion(img, lastState.Img, detectorThreshold, detectorBlindSpot)
+			debugImg, motionPoint := detector.DetectMotion(
+				img,
+				lastState.Img,
+				uint32(*fDetectorThreshold),
+				detectorBlindSpot,
+			)
 			lastState.Img = img
 
 			// move laser dot
@@ -166,11 +224,11 @@ func main() {
 			if notZeroPoint && pointMoved {
 				lastState.MotionPoint = motionPoint
 
-				motionX := float64(motionPoint.X) / float64(streamWidth)
-				motionY := float64(motionPoint.Y) / float64(streamHeight)
+				motionX := float64(motionPoint.X) / float64(cameraWidth)
+				motionY := float64(motionPoint.Y) / float64(cameraHeight)
 
 				// run away from the motion
-				servoFieldXY.RunAway(motionX, motionY, runAwayRadius, alwaysStayOnRunAwayRadius)
+				servoFieldXY.RunAway(motionX, motionY, *fLaserRunAwayRadius, *fFollow)
 
 				//DEBUG: track to the motion
 				//servoFieldXY.LineTo(motionX, motionY)
@@ -189,7 +247,7 @@ func main() {
 			)
 
 			// draw current dot position
-			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, detectorBlindSpotRadius, 2)
+			imgDrawer.DrawCrosshead(lastState.DotPoint.X, lastState.DotPoint.Y, params.DetectorBlindSpotRadius, 2)
 
 			// draw detected motion
 			imgDrawer.DrawRect(
@@ -202,9 +260,11 @@ func main() {
 
 			lastState.Unlock()
 
-			debugImageCh <- imgDrawer.JpegBytes(100)
+			if *fStream {
+				debugImageCh <- imgDrawer.JpegBytes(100)
+			}
 
-			if debug {
+			if *fDebug {
 				fmt.Printf("fps: %5.1f\tframe took: %s\n", 1/time.Since(startTime).Seconds(), time.Since(startTime))
 			}
 		}
@@ -216,28 +276,37 @@ func main() {
 			p := <-servoFieldXY.CurrentPercentPointCh
 			lastState.Lock()
 			lastState.DotPoint = image.Point{
-				X: int(float64(streamWidth) * p.X),
-				Y: int(float64(streamHeight) * p.Y),
+				X: int(float64(cameraWidth) * p.X),
+				Y: int(float64(cameraHeight) * p.Y),
 			}
 			lastState.Unlock()
 		}
 	}()
 
-	streamServer := &mjpeg.Server{
-		Addr:      ":8081",
-		StreamURL: "/stream",
-		Source:    debugImageCh,
-	}
-
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
 		//TODO handle this in all goroutines
 		<-signalCh
-		fmt.Println("Interrupted by user...")
+
+		fmt.Println("Interrupted.")
+		wg.Done()
 		os.Exit(0)
 	}()
 
-	// start
-	streamServer.ListenAndServe()
+	if *fStream {
+		streamServer := &mjpeg.Server{
+			Addr:      fmt.Sprintf(":%s", *fStreamPort),
+			StreamURL: "/stream",
+			Source:    debugImageCh,
+		}
+
+		// start
+		streamServer.ListenAndServe()
+	} else {
+		wg.Wait()
+	}
 }

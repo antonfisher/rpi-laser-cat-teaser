@@ -20,10 +20,10 @@ type PercentPoint struct {
 
 //FieldXY is a two-dimensional field that controls two servos (one for X, and one for Y axes)
 type FieldXY struct {
-	ServoX         *Servo
-	ServoY         *Servo
-	FlipHorizontal bool
-	FlipVertical   bool
+	ServoX *Servo
+	ServoY *Servo
+	FlipX  bool
+	FlipY  bool
 
 	CurrentPercentPointCh chan PercentPoint
 
@@ -77,10 +77,10 @@ func (f *FieldXY) SetPoint(x, y float64) {
 	default:
 	}
 
-	if f.FlipHorizontal {
+	if f.FlipX {
 		x = 1 - x
 	}
-	if f.FlipVertical {
+	if f.FlipY {
 		y = 1 - y
 	}
 	f.ServoX.SetPercent(x)
@@ -237,12 +237,12 @@ func (f *FieldXY) MoveRandom(step float64) {
 }
 
 // NewFieldXY creates new FieldXY
-func NewFieldXY(servoX, servoY *Servo, flipHorizontal, flipVertical bool) *FieldXY {
+func NewFieldXY(servoX, servoY *Servo, flipX, flipY bool) *FieldXY {
 	fieldXY := &FieldXY{
 		ServoX:                servoX,
 		ServoY:                servoY,
-		FlipHorizontal:        flipHorizontal,
-		FlipVertical:          flipVertical,
+		FlipX:                 flipX,
+		FlipY:                 flipY,
 		CurrentPercentPointCh: make(chan PercentPoint),
 		cancelNoiseCh:         make(chan struct{}),
 	}

@@ -89,7 +89,7 @@ func NewServo(pin RpiPwmPin, minAnglePulseLength, maxAnglePulseLength uint32) (*
 	servoPin := rpio.Pin(pin)
 	servoPin.Mode(rpio.Pwm)
 
-	fmt.Printf("new servo: %v %v %v\n", pin, minAnglePulseLength, maxAnglePulseLength)
+	fmt.Printf("[Servo] create: pin:%v, minAP: %v, maxAP:%v\n", pin, minAnglePulseLength, maxAnglePulseLength)
 
 	servo := &Servo{
 		Pin:                 pin,
