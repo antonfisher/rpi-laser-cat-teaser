@@ -4,6 +4,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/antonfisher/rpi-laser-cat-teaser)](https://goreportcard.com/report/github.com/antonfisher/rpi-laser-cat-teaser)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
+![proof of concept](https://raw.githubusercontent.com/antonfisher/rpi-laser-cat-teaser/docs/images/rpi-laser-cat-teaser-bare.png)
+
 ## Idea
 
 A laser dot runs away from a cat using an RPi camera, a laser, and two servos.
