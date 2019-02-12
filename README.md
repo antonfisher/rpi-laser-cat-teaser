@@ -66,13 +66,13 @@ Usage of ./bin/rpi-laser-cat-teaser:
     	laser random movements interval in seconds (0 to disable) (default 2)
   -run-away-radius float
     	laser run away radius as percent of width [0-1] (default 0.5)
-  -servo-x-flip
+  -servo-flip-x
     	flip servo x position calculation
   -servo-x-max int
     	servo x max angle pulse length ~[20-120] (default 97)
   -servo-x-min int
     	servo x min angle pulse length ~[20-120] (default 74)
-  -servo-y-flip
+  -servo-flip-y
     	flip servo y position calculation
   -servo-y-max int
     	servo y max angle pulse length ~[20-120] (default 75)
@@ -109,3 +109,10 @@ Usage of ./bin/rpi-laser-cat-teaser:
     - [ ] order case
     - [ ] fit component
 - [ ] final assembling
+
+## Example
+
+```bash
+# to run same configuration as the image above has
+rpi-laser-cat-teaser -servo-flip-x -servo-flip-y -camera-flip-h -camera-flip-v -stream
+```

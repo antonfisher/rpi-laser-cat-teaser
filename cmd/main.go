@@ -74,8 +74,8 @@ func main() {
 			"camera resolution scale (128*scale x 96*scale)",
 		)
 
-		fServoXFlip = flag.Bool("servo-x-flip", false, "flip servo x position calculation")
-		fServoYFlip = flag.Bool("servo-y-flip", false, "flip servo y position calculation")
+		fServoXFlip = flag.Bool("servo-flip-x", false, "flip servo x position calculation")
+		fServoYFlip = flag.Bool("servo-flip-y", false, "flip servo y position calculation")
 		fServoXMin  = flag.Int(
 			"servo-x-min",
 			params.ServoXMinAnglePulseLength,
