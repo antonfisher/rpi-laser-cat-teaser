@@ -10,7 +10,7 @@
 
 A laser dot runs away from a cat using an RPi camera, a laser, and two servos.
 
-Algorithm [demo](http://rpi-laser-cat-teaser.github.io).
+Algorithm [demo](https://antonfisher.com/rpi-laser-cat-teaser/).
 
 What the program does:
 - detects the cat movement using an RPi camera
