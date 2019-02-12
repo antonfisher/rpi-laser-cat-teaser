@@ -4,11 +4,11 @@ canvasEl.id = 'box';
 canvasEl.style = 'border:5px solid orange;cursor:none';
 
 if (document.body.clientWidth > document.body.clientHeight) {
-  canvasEl.height = document.body.clientHeight - 50;
+  canvasEl.height = document.body.clientHeight - 150;
   canvasEl.width = (canvasEl.height / 3) * 4 - 50;
 } else {
   canvasEl.width = document.body.clientWidth - 50;
-  canvasEl.height = (canvasEl.width / 4) * 3 - 50;
+  canvasEl.height = (canvasEl.width / 4) * 3 - 150;
 }
 
 const logEl = document.createElement('pre');
